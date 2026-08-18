@@ -2,74 +2,68 @@ pipeline {
     agent any
 
     environment {
-        IMAGE = "shashiaradhya/three-tier-frontend"
-        TAG = "latest"
+        IMAGE = "dockerproject"
+        REPO  = "shashiaradhya/dockerproject:latest"
     }
 
     stages {
 
         stage('Checkout') {
             steps {
-                git branch: 'master',
-                    url: 'https://github.com/shashiaradhya990/dockerproject.git'
-            }
-        }
-
-        stage('Check Files') {
-            steps {
-                sh '''
-                    echo "Current directory:"
-                    pwd
-
-                    echo "Files:"
-                    ls -la
-
-                    echo "Folders:"
-                    find . -maxdepth 2 -type d
-                '''
+                git 'https://github.com/shashiaradhya990/dockerproject.git'
             }
         }
 
         stage('Build') {
             steps {
-                sh 'docker build -t $IMAGE:$TAG ./frontend'
+                sh 'docker build -t $IMAGE .'
             }
         }
 
-        stage('Test') {
+        stage('Tag') {
             steps {
-                sh 'docker images'
+                sh 'docker tag $IMAGE $REPO'
             }
         }
 
-        stage('Docker Login') {
+        stage('Push') {
             steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'dockerhub-credentials',
-                        usernameVariable: 'DOCKER_USER',
-                        passwordVariable: 'DOCKER_PASS'
-                    )
-                ]) {
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-credentials',
+                    usernameVariable: 'DOCKER_USERNAME',
+                    passwordVariable: 'DOCKER_PASSWORD'
+                )]) {
                     sh '''
-                        echo "$DOCKER_PASS" | docker login \
-                        -u "$DOCKER_USER" \
+                        echo "$DOCKER_PASSWORD" | docker login \
+                        -u "$DOCKER_USERNAME" \
                         --password-stdin
+
+                        docker push "$REPO"
                     '''
                 }
             }
         }
 
-        stage('Docker Push') {
+        stage('Deploy') {
             steps {
-                sh 'docker push $IMAGE:$TAG'
+                sh '''
+                    docker rm -f webapp || true
+                    docker run -d \
+                    --name webapp \
+                    -p 80:80 \
+                    $REPO
+                '''
             }
         }
     }
 
     post {
-        always {
-            sh 'docker logout || true'
+        success {
+            echo 'Website deployed successfully!'
+        }
+
+        failure {
+            echo 'Pipeline failed!'
         }
     }
 }
